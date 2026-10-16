@@ -3,8 +3,15 @@ import logging
 import subprocess
 import sqlite3
 import shutil
-import joblib
+import torch
 import requests
+
+# Compatibility shim: transformers>=5 expects torch.float8_e8m0fnu (torch>=2.8),
+# stub it when running on older torch so BertForSequenceClassification imports.
+if not hasattr(torch, "float8_e8m0fnu"):
+    torch.float8_e8m0fnu = torch.float8_e4m3fn
+
+from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from datetime import datetime
 from flask import Flask, request, jsonify, send_file, render_template, g
 from dotenv import load_dotenv
@@ -18,38 +25,55 @@ app = Flask(__name__)
 
 DB_PATH = "conversations.db"
 
-EMOTION_MODEL = joblib.load("emotion_classifier_pipe_lr_03_june_2021.pkl")
+# Local multilingual emotion model (BERT sequence classifier).
+# Override with EMOTION_MODEL_PATH env var if needed.
+def _resolve_emotion_model_path():
+    candidates = [
+        os.getenv("EMOTION_MODEL_PATH"),
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "multilingual_emotion_model"),
+        r"C:\Users\hp\Downloads\nlp pro\multilingual_emotion_model",
+        os.path.join(os.getcwd(), "multilingual_emotion_model"),
+    ]
+    for p in candidates:
+        if p and os.path.isdir(p):
+            return p
+    return candidates[1]
 
-GREETING_KEYWORDS = [
-    "hello",
-    "hi",
-    "hey",
-    "good morning",
-    "good afternoon",
-    "good evening",
-    "how are you",
-    "what's up",
-    "sup",
-    "greetings",
-]
+
+EMOTION_MODEL_PATH = _resolve_emotion_model_path()
+EMOTION_TOKENIZER = None
+EMOTION_MODEL = None
+try:
+    EMOTION_TOKENIZER = AutoTokenizer.from_pretrained(
+        EMOTION_MODEL_PATH, local_files_only=True, trust_remote_code=False
+    )
+    EMOTION_MODEL = AutoModelForSequenceClassification.from_pretrained(
+        EMOTION_MODEL_PATH, local_files_only=True, trust_remote_code=False
+    )
+    EMOTION_MODEL.eval()
+    logger.info(
+        "Loaded emotion model from %s labels=%s",
+        EMOTION_MODEL_PATH,
+        EMOTION_MODEL.config.id2label,
+    )
+except Exception as e:
+    EMOTION_TOKENIZER = None
+    EMOTION_MODEL = None
+    logger.warning("Emotion model not loaded from %s: %s", EMOTION_MODEL_PATH, e)
+
+# Model labels (Happy/Sad/Angry/Fear/Surprise/Disgust/Neutral) -> app labels
+# used by frontend badges + ESP32 OLED eyes (happy/excited/sad/angry + default).
+EMOTION_LABEL_MAP = {
+    "Happy": "happy",
+    "Sad": "sad",
+    "Angry": "angry",
+    "Fear": "scared",
+    "Surprise": "excited",
+    "Disgust": "angry",
+    "Neutral": "neutral",
+}
+
 import re
-
-QUESTION_KEYWORDS = [
-    "what",
-    "why",
-    "how",
-    "when",
-    "where",
-    "who",
-    "which",
-    "can you",
-    "do you",
-    "is it",
-    "does",
-    "could",
-    "would",
-    "?",
-]
 
 UNSAFE_WORDS = [
     "kill",
@@ -216,20 +240,36 @@ Output Style:
 
 
 def predict_emotion(text):
+    """Local multilingual BERT emotion classifier. Returns app-level label."""
     try:
-        text_lower = text.lower()
-        if any(greet in text_lower for greet in GREETING_KEYWORDS):
+        if not text or not text.strip():
             return "neutral"
-        if any(q in text_lower for q in QUESTION_KEYWORDS):
+        if EMOTION_MODEL is None or EMOTION_TOKENIZER is None:
             return "neutral"
-        result = EMOTION_MODEL.predict([text])[0]
-        return result
+        inputs = EMOTION_TOKENIZER(
+            text, return_tensors="pt", truncation=True, max_length=128
+        )
+        with torch.no_grad():
+            logits = EMOTION_MODEL(**inputs).logits
+            pred_id = int(logits.argmax(dim=-1).item())
+        raw_label = EMOTION_MODEL.config.id2label.get(pred_id, "Neutral")
+        if isinstance(raw_label, int):
+            raw_label = EMOTION_MODEL.config.id2label.get(str(pred_id), "Neutral")
+        mapped = EMOTION_LABEL_MAP.get(str(raw_label), "neutral")
+        return mapped.lower()
     except Exception as e:
         print(f"Emotion prediction error: {e}")
         return "neutral"
 
 
 def detect_emotion_ai(text):
+    # Primary: local multilingual model (fast, offline, no API cost).
+    local = predict_emotion(text)
+    if EMOTION_MODEL is not None and local != "neutral":
+        return local
+    if EMOTION_MODEL is not None and local == "neutral":
+        # Trust explicit neutral from local model; skip LLM call.
+        return local
     try:
         emotion_prompt = f"""Analyze the emotion in this message and respond with ONLY ONE word from this list:
 happy, sad, angry, scared, confused, excited, neutral
