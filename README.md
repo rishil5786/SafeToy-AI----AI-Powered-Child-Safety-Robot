@@ -1,21 +1,82 @@
-# AI Chat Robot for Children
-Video demo :- https://www.youtube.com/watch?v=6qxjWUGYwhE
+# 🤖 AI Chat Robot for Children
 
-A child-friendly AI voice assistant built with ESP32-S3 and Python. The robot listens to children, responds with AI-generated answers, and displays emotions on OLED eyes.
+> A child-friendly AI voice assistant built with **ESP32-S3** and **Python** — designed to safely interact with children, detect their emotions, and respond in a fun, educational way.
 
-## What It Does
+🎥 **Video Demo**: [Watch on YouTube](https://www.youtube.com/watch?v=6qxjWUGYwhE)
 
-- **Voice Input**: Child holds button to speak
-- **Speech Recognition**: Converts audio to text using Whisper
-- **AI Response**: Generates child-friendly responses using Llama LLM
-- **Emotion Detection**: Detects if child is happy, sad, angry, etc.
-- **Text-to-Speech**: Speaks the response using Edge TTS
-- **Visual Feedback**: OLED eyes show matching emotions
+---
+
+## ✨ What It Does
+
+| Feature | Description |
+|---|---|
+| 🎙️ **Voice Input** | Child holds button to speak |
+| 🧠 **Speech Recognition** | Converts audio to text using Whisper (via Groq) |
+| 💬 **AI Response** | Generates child-friendly responses using Llama LLM |
+| 😊 **Emotion Detection** | Detects emotions (happy, sad, angry, scared, etc.) |
+| 🔊 **Text-to-Speech** | Speaks the response using Edge TTS |
+| 👁️ **Visual Feedback** | OLED eyes display matching emotions |
+| 🛡️ **Safety Detection** | ML-powered toxic/hate speech classifier blocks harmful content |
 
 <img width="883" height="558" alt="image" src="https://github.com/user-attachments/assets/1a5cf196-ea79-43cc-a6e5-77a8f4860a81" />
 
+---
 
-## Parts Needed
+## 🛡️ Safety Detection System
+
+This project includes a **dual-layer child safety system**:
+
+### Layer 1 — Keyword Filter (Real-time)
+- Blocks dangerous words, profanity, and inappropriate content instantly
+- Built into `server.py` as `check_response_safety()`
+- Zero latency, works offline
+
+### Layer 2 — ML Safety Model (Advanced)
+An ML-powered toxic/hate speech classifier trained on two real-world datasets:
+
+| Dataset | Size | Labels |
+|---|---|---|
+| **Jigsaw Toxic Comment** (`train.csv`) | 159,571 entries | toxic, severe_toxic, obscene, threat, insult, identity_hate |
+| **Hate Speech** (`labeled_data.csv`) | 24,783 tweets | hate_speech, offensive_language, neither |
+
+**Model Architecture — Stacking Classifier:**
+```
+TF-IDF Vectorizer
+       ↓
+┌──────────────────────────────┐
+│  Base Classifiers (Level 1)  │
+│  • Logistic Regression       │
+│  • LinearSVC                 │
+│  • Multinomial Naive Bayes   │
+│  • SGD Classifier            │
+└──────────────────────────────┘
+       ↓
+┌──────────────────────────────┐
+│  Meta Classifier (Level 2)   │
+│  • Logistic Regression       │
+└──────────────────────────────┘
+       ↓
+  safe / unsafe prediction
+```
+
+**To train and use the safety model:**
+```bash
+# 1. Download datasets (links in notebook)
+#    - train.csv (Jigsaw Toxic Comments)
+#    - labeled_data.csv (Hate Speech Dataset)
+
+# 2. Run the notebook
+jupyter notebook safety_detection_model.ipynb
+
+# 3. The trained model will be saved as a .pkl file
+#    and can be integrated into server.py
+```
+
+> See [`safety_detection_model.ipynb`](safety_detection_model.ipynb) for the full training pipeline with EDA, preprocessing, model evaluation, ROC curves, and confusion matrices.
+
+---
+
+## 🔩 Hardware Required
 
 ### Electronics
 | Part | Quantity | Notes |
@@ -34,7 +95,9 @@ A child-friendly AI voice assistant built with ESP32-S3 and Python. The robot li
 - Soldering iron (optional)
 - 3D printed case (optional)
 
-## Wiring Diagram
+---
+
+## 🔌 Wiring Diagram
 
 ```
 ESP32-S3 → Microphone (INMP441)
@@ -71,23 +134,20 @@ ESP32-S3 → Button & LED
 │  LED      → GPIO21 (via 330Ω)     │
 └─────────────────────────────┘
 ```
-![WhatsApp Image 2026-04-03 at 07 33 38](https://github.com/user-attachments/assets/f6334f45-a84b-4a64-add3-623945d13686)
 
-## Software Setup
+![Wiring Photo](https://github.com/user-attachments/assets/f6334f45-a84b-4a64-add3-623945d13686)
+
+---
+
+## 💻 Software Setup
 
 ### 1. Get Groq API Key (Free)
 
 1. Go to [groq.com](https://groq.com)
-2. Sign up for free account
-3. Copy your API key from dashboard
+2. Sign up for a free account
+3. Copy your API key from the dashboard
 
-### 2. Install Python
-
-```bash
-python --version
-```
-
-### 3. Install Dependencies
+### 2. Install Python & Dependencies
 
 ```bash
 # Create virtual environment (recommended)
@@ -100,10 +160,10 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # Install packages
-pip install flask flask-cors joblib requests groq python-dotenv edge-tts
+pip install flask flask-cors joblib requests groq python-dotenv edge-tts scikit-learn
 ```
 
-### 4. Install FFmpeg (Required for TTS)
+### 3. Install FFmpeg (Required for TTS)
 
 **Windows:**
 ```bash
@@ -121,11 +181,11 @@ brew install ffmpeg
 sudo apt install ffmpeg
 ```
 
+---
+
 ## ⚙️ Configuration
 
-### 1. Create .env File
-
-Create a file named `.env` in the project folder:
+### 1. Create `.env` File
 
 ```env
 GROQ_API_KEY=your_groq_api_key_here
@@ -133,143 +193,154 @@ GROQ_API_KEY=your_groq_api_key_here
 
 ### 2. Update ESP32 IP Address
 
-In `esp32_robot/esp32_robot.ino`, change to your computer's IP:
+In `esp32_robot/esp32_robot.ino`, update:
 
 ```cpp
 String server_url = "http://YOUR_PC_IP:5050";
 ```
 
-To find your IP:
+**Find your IP:**
 - **Windows**: Run `ipconfig` in cmd
 - **Mac/Linux**: Run `hostname -I` in terminal
 
-## Running the Server
+---
 
-### Option 1: Using Batch File (Windows)
+## ▶️ Running the Server
+
+### Option 1: Batch File (Windows)
 ```bash
 run_server.bat
 ```
 
 ### Option 2: Manual Start
-
 ```bash
-# Terminal 1 - Start TTS server (must run first!)
+# Terminal 1 — Start TTS server first
 python tts_server.py
 
-# Terminal 2 - Start main server
+# Terminal 2 — Start main server
 python server.py
 ```
 
-### Verify It's Working
+**Verify it's working:**
 - Main server: http://localhost:5050
-- TTS server: http://localhost:8000/tts (returns audio)
+- TTS server: http://localhost:8000/tts
 
-## Upload ESP32 Code
+---
+
+## 📡 Upload ESP32 Code
 
 ### 1. Install Arduino ESP32 Board
 
 1. Open Arduino IDE
-2. Go to File → Preferences
+2. Go to **File → Preferences**
 3. Add to "Additional Boards Manager URLs":
    ```
    https://espressif.github.io/arduino-esp32/package_esp32_index.json
    ```
-4. Tools → Board → Board Manager
+4. **Tools → Board → Board Manager**
 5. Search "ESP32" and install
 
 ### 2. Install Required Libraries
 
-Sketch → Include Library → Manage Libraries:
+**Sketch → Include Library → Manage Libraries:**
 - `WiFiManager` by tzapu
 - `ArduinoJson` by bblanchon
 - `Adafruit_GFX_Library` by adafruit
 - `Adafruit_SSD1306` by adafruit
 
-### 3. Upload Code
+### 3. Upload & Initial Setup
 
-1. Open `esp32_robot/esp32_robot.ino` in Arduino IDE
-2. Select board: "XIAO ESP32S3" or "ESP32S3 Dev Module"
-3. Select port (USB)
-4. Click Upload
+1. Open `esp32_robot/esp32_robot.ino`
+2. Select board: **XIAO ESP32S3** or **ESP32S3 Dev Module**
+3. Select the correct USB port
+4. Click **Upload**
+5. Power on → robot creates WiFi AP **"XIAO-Robot-Setup"**
+6. Connect with phone/laptop → enter your WiFi credentials
+7. Robot restarts and connects to your network
 
-### 4. Initial Setup
+---
 
-1. Power on the robot
-2. It creates WiFi AP "XIAO-Robot-Setup"
-3. Connect with phone/laptop
-4. Enter your WiFi credentials
-5. Robot restarts and connects to WiFi
+## 🕹️ Using the Robot
 
-## Using the Robot
-
-1. Start servers on your computer
+1. Start both servers on your computer
 2. Hold the button on the robot
 3. Speak your message (up to 3 seconds)
 4. Release the button
-5. Robot sends audio → gets response → speaks back
-6. OLED eyes show the detected emotion
+5. Robot processes audio → generates response → speaks back
+6. OLED eyes display the detected emotion
 
-## Web Interface
+---
+
+## 🌐 Web Interface
 
 | Page | URL | Purpose |
 |------|-----|---------|
-| Conversations | http://localhost:5050 | View chat history |
-| Report | http://localhost:5050/report | Development report |
+| Conversations | http://localhost:5050 | View full chat history |
+| Report | http://localhost:5050/report | Child development report |
 
-## API Endpoints
+---
+
+## 🔗 API Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/upload` | POST | Send audio, get AI response |
-| `/audio/<filename>` | GET | Get response audio |
+| `/upload` | POST | Send audio, receive AI response |
+| `/audio/<filename>` | GET | Retrieve response audio |
 | `/conversations` | GET | Get all conversations |
-| `/conversations/<id>` | DELETE | Delete conversation |
+| `/conversations/<id>` | DELETE | Delete a conversation |
 | `/conversations/clear` | POST | Clear all history |
-| `/conversations/recompute` | POST | Redetect emotions |
-| `/api/report` | GET | Generate report |
+| `/conversations/recompute` | POST | Re-detect emotions |
+| `/api/report` | GET | Generate child development report |
 
-## Troubleshooting
+---
 
-### "No WiFi" in Serial Monitor
-- Check your WiFi credentials in the code
-- Make sure ESP32 is within range
-
-### "Connection Failed" Error
-- Verify server is running on computer
-- Check IP address in `esp32_robot.ino`
-- Make sure firewall allows port 5050
-
-### Audio Not Playing
-- Check speaker is connected
-- Verify TTS server is running on port 8000
-
-### "API Key" Error
-- Make sure `.env` file exists
-- Check API key is correct
-
-## Project Structure
+## 📁 Project Structure
 
 ```
 ai-robot/
-├── server.py                  # Main Flask server
-├── tts_server.py              # Text-to-speech server
-├── .env                       # API key (your file)
-├── .gitignore                 # Git ignore rules
-├── README.md                  # This file
-├── run_server.bat             # Windows startup script
-├── conversations.db           # Chat history (auto-created)
-├── emotion_classifier*.pkl    # Emotion model
+├── server.py                    # Main Flask server + safety filter
+├── tts_server.py                # Text-to-speech server
+├── safety_detection_model.ipynb # ML safety classifier (our addition)
+├── .env                         # API key (your file, not committed)
+├── .gitignore                   # Git ignore rules
+├── README.md                    # This file
+├── run_server.bat               # Windows startup script
+├── conversations.db             # Chat history (auto-created)
 ├── esp32_robot/
-│   ├── esp32_robot.ino        # Robot firmware
-│   └── RoboEyesSimple.h       # OLED eye library
+│   ├── esp32_robot.ino          # Robot firmware
+│   └── RoboEyesSimple.h         # OLED eye animation library
 └── templates/
-    ├── conversations.html     # History web page
-    └── report.html            # Report web page
+    ├── conversations.html       # Chat history web page
+    └── report.html              # Development report web page
 ```
 
+---
 
-## Credits
+## 🔧 Troubleshooting
 
-- [Groq](https://groq.com) - LLM and Whisper API
-- [Edge TTS](https://github.com/rany2/edge-tts) - Free text-to-speech
-- [WiFiManager](https://github.com/tzapu/WiFiManager) - ESP32 WiFi config
+| Problem | Solution |
+|---------|----------|
+| "No WiFi" in Serial Monitor | Check WiFi credentials, check ESP32 range |
+| "Connection Failed" Error | Verify server is running, check IP in `.ino`, allow port 5050 in firewall |
+| Audio Not Playing | Check speaker connection, verify TTS server on port 8000 |
+| "API Key" Error | Check `.env` file exists with correct key |
+
+---
+
+## 🏫 College Mini-Project
+
+This project was developed as a college mini-project exploring the intersection of:
+- **Hardware**: ESP32-S3 microcontroller + I2S audio + OLED display
+- **NLP**: Speech recognition, emotion detection, child-safe language modeling
+- **ML Safety**: Toxic/hate speech detection using ensemble classifiers
+- **AI**: LLM-powered child-friendly conversation
+
+---
+
+## 🙏 Credits
+
+- [Groq](https://groq.com) — LLM & Whisper API
+- [Edge TTS](https://github.com/rany2/edge-tts) — Free text-to-speech
+- [WiFiManager](https://github.com/tzapu/WiFiManager) — ESP32 WiFi configuration
+- [Jigsaw Toxic Comment Dataset](https://www.kaggle.com/c/jigsaw-toxic-comment-classification-challenge) — Safety model training data
+- [Hate Speech Dataset](https://github.com/t-davidson/hate-speech-and-offensive-language) — Safety model training data
